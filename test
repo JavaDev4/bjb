@@ -50,3 +50,52 @@ public class PojoTest {
         return new Class[]{};  // Placeholder
     }
 }
+
+
+
+		eee
+
+
+
+
+import org.reflections.Reflections;
+import org.reflections.scanners.SubTypesScanner;
+import org.reflections.util.ConfigurationBuilder;
+import org.junit.jupiter.api.Test;
+import java.lang.reflect.Field;
+import java.util.Set;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+public class DynamicAssertionTest {
+
+    @Test
+    public void testAllModelClassesForNonNullFields() throws IllegalAccessException {
+        // Scanning the package for all classes
+        Reflections reflections = new Reflections(new ConfigurationBuilder()
+                .forPackages("com.example.myapp.models")
+                .addScanners(new SubTypesScanner(false)));
+
+        Set<Class<?>> allClasses = reflections.getSubTypesOf(Object.class);
+
+        // Iterate over each discovered class
+        for (Class<?> clazz : allClasses) {
+            Object instance = createInstance(clazz);
+            if (instance != null) {  // Ensure instance could be created
+                for (Field field : clazz.getDeclaredFields()) {
+                    field.setAccessible(true);  // Make the field accessible
+                    assertNotNull(field.get(instance), "Field " + field.getName() + " in class " + clazz.getName() + " is null");
+                }
+            }
+        }
+    }
+
+    // Helper method to create an instance of a class using the default constructor
+    private Object createInstance(Class<?> clazz) {
+        try {
+            return clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            System.err.println("Failed to create instance of " + clazz.getName() + ": " + e.getMessage());
+            return null;
+        }
+    }
+}
