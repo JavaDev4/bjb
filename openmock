@@ -1,0 +1,33 @@
+
+<dependency>
+    <groupId>org.mockito</groupId>
+    <artifactId>mockito-core</artifactId>
+    <version>4.5.1</version>
+    <scope>test</scope>
+</dependency>
+
+
+
+package com.example.myapp.utils;
+
+import org.mockito.Mockito;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import org.reflections.Reflections;
+
+public class MockUtility {
+    
+    public static Map<Class<?>, Object> mockAllClassesInPackage(String packageName) {
+        Map<Class<?>, Object> mocks = new HashMap<>();
+        Reflections reflections = new Reflections(packageName);
+        
+        Set<Class<?>> allClasses = reflections.getSubTypesOf(Object.class);
+        
+        for (Class<?> clazz : allClasses) {
+            Object mock = Mockito.mock(clazz);
+            mocks.put(clazz, mock);
+        }
+        return mocks;
+    }
+}
