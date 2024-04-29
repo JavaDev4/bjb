@@ -27,4 +27,3 @@ public class PersonTest {
         validator.validate("com.example.model", filter);
     }
 }
-
