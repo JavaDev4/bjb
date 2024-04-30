@@ -47,5 +47,25 @@ public class CustomerCreationDelegateServiceTest {
         verify(jobLauncher).run(eq(customerJob), any(JobParameters.class));
     }
 
+@Test
+void whenJobLauncherThrowsException_thenExceptionMessageIsReturned() throws Exception {
+    // Arrange
+    String ecId = "exampleEcId";
+    JobParameters jobParameters = new JobParametersBuilder()
+            .addString("JOB_EXECUTION_TIMESTAMP", String.valueOf(System.currentTimeMillis()))
+            .addString("BATCH_NAME", "CUSTOMER_API_JOB")
+            .toJobParameters();
+
+    // Simulate an exception being thrown by the job launcher
+    when(jobLauncher.run(any(Job.class), any(JobParameters.class))).thenThrow(new RuntimeException("Job failed"));
+
+    // Act
+    String result = service.invokeCustomerCreationJob(ecId);
+
+    // Assert
+    assertTrue(result.contains("Job failed"));
+    verify(jobLauncher).run(eq(customerJob), any(JobParameters.class));
+}
+
     // Add more tests to cover failure scenarios, exceptions, etc.
 }
