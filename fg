@@ -103,19 +103,37 @@ public class TestCaseGenerator {
         return testCase.toString();
     }
 
-    public static Object generateTestData(Class<?> type) {
-        if (type.equals(String.class)) {
-            return "\"testString\"";
-        } else if (type.equals(int.class) || type.equals(Integer.class)) {
-            return "123";
-        } else if (type.equals(double.class) || type.equals(Double.class)) {
-            return "123.45";
-        } else if (type.equals(boolean.class) || type.equals(Boolean.class)) {
-            return "true";
-        } else {
-            return "null"; // You may need to handle other data types accordingly
-        }
+   public static Object generateTestData(Class<?> type) {
+    if (type.equals(String.class)) {
+        return "\"testString\"";
+    } else if (type.equals(int.class) || type.equals(Integer.class)) {
+        return "123";
+    } else if (type.equals(double.class) || type.equals(Double.class)) {
+        return "123.45";
+    } else if (type.equals(float.class) || type.equals(Float.class)) {
+        return "123.45f";
+    } else if (type.equals(long.class) || type.equals(Long.class)) {
+        return "123L";
+    } else if (type.equals(short.class) || type.equals(Short.class)) {
+        return "(short) 123";
+    } else if (type.equals(byte.class) || type.equals(Byte.class)) {
+        return "(byte) 123";
+    } else if (type.equals(boolean.class) || type.equals(Boolean.class)) {
+        return "true";
+    } else if (type.equals(char.class) || type.equals(Character.class)) {
+        return "'a'";
+    } else if (type.isArray()) {
+        Class<?> componentType = type.getComponentType();
+        return "new " + componentType.getSimpleName() + "[] {" + generateTestData(componentType) + "}";
+    } else if (type.equals(List.class)) {
+        return "Arrays.asList(" + generateTestData(String.class) + ", " + generateTestData(String.class) + ")";
+    } else if (type.equals(Map.class)) {
+        return "Collections.singletonMap(" + generateTestData(String.class) + ", " + generateTestData(String.class) + ")";
+    } else {
+        return "null"; // You may need to handle other data types accordingly
     }
+}
+
 
     public static void writeTestCasesToFile(String packageName, String className, String content) {
         String packageDir = packageName.replace(".", "/");
