@@ -1,65 +1,107 @@
-// Get existing addresses from the database
-List<LinkedHashMap<String, String>> existingAddresses = addressInfo.getExistingAddresses();
+public AcbsProcessedStatusDto process(AcbsAddAddressMigrationDto item) throws Exception {
+    log.info("Item received in addAddress processor : {}", item);
+    AcbsProcessedStatusDto acbsProcessedStatusDto = new AcbsProcessedStatusDto();
+    String acbsIdentifier = item.getPARTY_IDENTIFIER();
+    String customerIdentifier;
 
-// Initialize lists for unmatched addresses
-List<AddressDto> unmatchedDtoAddresses = new ArrayList<>();
-List<LinkedHashMap<String, String>> unmatchedApiAddresses = new ArrayList<>();
-
-// Check if ECI and ACBS_IDENTIFIER are not null
-if (item.getECI() != null && item.getPARTY_IDENTIFIER() != null) {
-    PartyCentralClientResponse partyCentralResponse = partyCentralClientApiService.fetchClientByEci(item.getECI());
-
-    // Check DTO addresses against API addresses
-    for (AddressDto addressDto : addrDtoList) {
-        boolean addressExists = existingAddresses.stream()
-            .anyMatch(existingAddress -> compareAddresses(existingAddress, addressDto));
-
-        if (!addressExists) {
-            unmatchedDtoAddresses.add(addressDto);
-        }
+    if (acbsIdentifier.contains("/Party")) {
+        customerIdentifier = acbsIdentifier.replaceAll("\\D", "");
+    } else {
+        customerIdentifier = acbsIdentifier;
     }
 
-    // Check API addresses against DTO addresses
-    for (LinkedHashMap<String, String> existingAddress : existingAddresses) {
-        boolean addressExists = addrDtoList.stream()
-            .anyMatch(addressDto -> compareAddresses(existingAddress, addressDto));
+    String addAddressIdentifiers = "-";
+    List<String> descriptionMsgList = new ArrayList<>();
 
-        if (!addressExists) {
-            unmatchedApiAddresses.add(existingAddress);
+    // Deserialize JSON to AddressDto list
+    String json = item.getADDR_LIST_JSONSTRING();
+    List<AddressDto> addrDtoList = Arrays.asList(frbCommonUtil.objectMapper.readValue(json, AddressDto[].class));
+
+    // Get the maximum address identifier
+    AddressInfo addressInfo = addAddressApiService.getAddressInfo(customerIdentifier);
+    Integer maxAddressIdentifier = addressInfo.getMaxAddressIdentifier();
+    log.info("Max address identifier: {}", maxAddressIdentifier);
+
+    // Get existing addresses from the database
+    List<LinkedHashMap<String, String>> existingAddresses = addressInfo.getExistingAddresses();
+
+    // Check if ECI and ACBS_IDENTIFIER are not null
+    if (item.getECI() != null && item.getPARTY_IDENTIFIER() != null) {
+        PartyCentralClientResponse partyCentralResponse = partyCentralClientApiService.fetchClientByEci(item.getECI());
+
+        // Initialize lists for unmatched addresses
+        List<AddressDto> unmatchedDtoAddresses = new ArrayList<>();
+        List<LinkedHashMap<String, String>> unmatchedApiAddresses = new ArrayList<>();
+
+        // Check DTO addresses against API addresses
+        for (AddressDto addressDto : addrDtoList) {
+            boolean addressExists = existingAddresses.stream()
+                .anyMatch(existingAddress -> compareAddresses(existingAddress, addressDto));
+
+            if (!addressExists) {
+                unmatchedDtoAddresses.add(addressDto);
+            }
         }
+
+        // Check API addresses against DTO addresses
+        for (LinkedHashMap<String, String> existingAddress : existingAddresses) {
+            boolean addressExists = addrDtoList.stream()
+                .anyMatch(addressDto -> compareAddresses(existingAddress, addressDto));
+
+            if (!addressExists) {
+                unmatchedApiAddresses.add(existingAddress);
+            }
+        }
+
+        // Add unmatched DTO addresses
+        for (AddressDto addressDto : unmatchedDtoAddresses) {
+            maxAddressIdentifier++;
+            String addressIdentifierFormat = String.format("%03d", maxAddressIdentifier);
+
+            AcbsAddAddressRequest addAddressRequest = addAddressBuilder.addAddressRequest(
+                partyCentralResponse, addressDto, addressIdentifierFormat, customerIdentifier, createTransformation());
+
+            String addressIdentifier = addAddressService.addAddress(customerIdentifier, addAddressRequest);
+            if (addressIdentifier != null) {
+                descriptionMsgList.add(createCustomerBuilder.getIdentifierValue(addressIdentifier));
+                log.info("Address Identifier: {}", addressIdentifier);
+            }
+        }
+
+        // Add unmatched API addresses (if needed, you may need to convert these to DTOs or another suitable format)
+        for (LinkedHashMap<String, String> existingAddress : unmatchedApiAddresses) {
+            // Convert existingAddress to AddressDto or suitable format if required
+            AddressDto addressDto = convertToAddressDto(existingAddress);
+            maxAddressIdentifier++;
+            String addressIdentifierFormat = String.format("%03d", maxAddressIdentifier);
+
+            AcbsAddAddressRequest addAddressRequest = addAddressBuilder.addAddressRequest(
+                partyCentralResponse, addressDto, addressIdentifierFormat, customerIdentifier, createTransformation());
+
+            String addressIdentifier = addAddressService.addAddress(customerIdentifier, addAddressRequest);
+            if (addressIdentifier != null) {
+                descriptionMsgList.add(createCustomerBuilder.getIdentifierValue(addressIdentifier));
+                log.info("Address Identifier: {}", addressIdentifier);
+            }
+        }
+
+        // Construct description message
+        if (!descriptionMsgList.isEmpty()) {
+            addAddressIdentifiers = descriptionMsgList.stream().map(Object::toString).collect(Collectors.joining(" , "));
+        }
+
+        acbsProcessedStatusDto = acbsMigrationProcessService.prepareAcbsMigrationDtoObj(
+            item.getDC_1_120_OBLIGOR(), item.getUCN(), item.getECI(), null, addAddressIdentifiers,
+            "Add Additional Address Successfully", null, null, null);
+        log.info("acbsProcessedStatusDto before sending it to writer :{}", acbsProcessedStatusDto);
+    } else {
+        log.info("ECI value is empty or identifierCounter null, hence not able to hit Party central API to get Country and street values");
+        acbsProcessedStatusDto = acbsMigrationProcessService.prepareAcbsMigrationDtoObj(
+            item.getDC_1_120_OBLIGOR(), item.getUCN(), item.getECI(), null, addAddressIdentifiers,
+            "Add Additional Address Failed", null, null, null);
     }
 
-    // Add unmatched DTO addresses
-    for (AddressDto addressDto : unmatchedDtoAddresses) {
-        maxAddressIdentifier++;
-        String addressIdentifierFormat = String.format("%03d", maxAddressIdentifier);
-
-        AcbsAddAddressRequest addAddressRequest = addAddressBuilder.addAddressRequest(
-            partyCentralResponse, addressDto, addressIdentifierFormat, customerId, createTransformation());
-
-        String addressIdentifier = addAddressService.addAddress(customerId, addAddressRequest);
-        if (addressIdentifier != null) {
-            descriptionMsgList.add(createCustomerBuilder.getIdentifierValue(addressIdentifier));
-            log.info("Address Identifier: {}", addressIdentifier);
-        }
-    }
-
-    // Add unmatched API addresses (if needed, you may need to convert these to DTOs or another suitable format)
-    for (LinkedHashMap<String, String> existingAddress : unmatchedApiAddresses) {
-        // Convert existingAddress to AddressDto or suitable format if required
-        AddressDto addressDto = convertToAddressDto(existingAddress);
-        maxAddressIdentifier++;
-        String addressIdentifierFormat = String.format("%03d", maxAddressIdentifier);
-
-        AcbsAddAddressRequest addAddressRequest = addAddressBuilder.addAddressRequest(
-            partyCentralResponse, addressDto, addressIdentifierFormat, customerId, createTransformation());
-
-        String addressIdentifier = addAddressService.addAddress(customerId, addAddressRequest);
-        if (addressIdentifier != null) {
-            descriptionMsgList.add(createCustomerBuilder.getIdentifierValue(addressIdentifier));
-            log.info("Address Identifier: {}", addressIdentifier);
-        }
-    }
+    return acbsProcessedStatusDto;
 }
 
 // Method to compare addresses
