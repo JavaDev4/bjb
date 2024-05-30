@@ -1,0 +1,25 @@
+public class StringConcatenator {
+
+    public static String concatenateWithLeadingZeros(String str1, String str2) {
+        if (str2 == null || str2.isEmpty()) {
+            throw new IllegalArgumentException("Second input cannot be null or empty");
+        }
+
+        // Adding leading zeros to the second string
+        String modifiedStr2 = addLeadingZeros(str2);
+
+        // Concatenating the two strings
+        return str1 + modifiedStr2;
+    }
+
+    private static String addLeadingZeros(String input) {
+        // Using String.format to add leading zeros
+        return String.format("%04d", Integer.parseInt(input));
+    }
+
+    public static void main(String[] args) {
+        // Example usage
+        String result = concatenateWithLeadingZeros("Number: ", "7");
+        System.out.println(result); // Output: Number: 0007
+    }
+}
