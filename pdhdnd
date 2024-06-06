@@ -1,0 +1,27 @@
+public class PhoneUtil {
+
+    /**
+     * Returns the business phone if available, otherwise returns the home phone.
+     * If both are null, returns an empty string.
+     *
+     * @param homePhone    the home phone number
+     * @param businessPhone the business phone number
+     * @return the preferred phone number or an empty string if both are null
+     */
+    public static String getPreferredPhone(String homePhone, String businessPhone) {
+        if (businessPhone != null) {
+            return businessPhone;
+        } else if (homePhone != null) {
+            return homePhone;
+        } else {
+            return "";
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(getPreferredPhone(null, null));          // Output: ""
+        System.out.println(getPreferredPhone("123-456-7890", null)); // Output: "123-456-7890"
+        System.out.println(getPreferredPhone(null, "987-654-3210")); // Output: "987-654-3210"
+        System.out.println(getPreferredPhone("123-456-7890", "987-654-3210")); // Output: "987-654-3210"
+    }
+}
