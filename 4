@@ -41,7 +41,7 @@ public class ADEJobConfig {
     @Bean
     public JdbcPagingItemReader<ADEData> adeReader() throws Exception {
         return pagingItemReader(
-                "Select Id, b_c_type, b_s_c, b_key, e_n_id, d_type, d_v_text",
+                "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
                 "from e938445.acbs_migration_process",
                 "where acbs_service = 'Create Customer' and processed <> 0",
                 Map.of("party_identifier", Order.ASCENDING),
@@ -65,16 +65,15 @@ public class ADEJobConfig {
         asyncItemWriter.setDelegate(
                 new JdbcBatchItemWriterBuilder<ADEData>()
                         .dataSource(dataSource)
-                        .sql("INSERT INTO acos_frb_dev.res_ade_export (id, business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:id, :b_c_type, :b_s_c, :b_key, :e_n_id, :d_type, :d_v_text)")
+                        .sql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)")
                         .itemSqlParameterSourceProvider(item -> {
                             MapSqlParameterSource params = new MapSqlParameterSource();
-                            params.addValue("id", item.getId());
-                            params.addValue("b_c_type", item.getB_c_type());
-                            params.addValue("b_s_c", item.getB_s_c());
-                            params.addValue("b_key", item.getB_key());
-                            params.addValue("e_n_id", item.getE_n_id());
-                            params.addValue("d_type", item.getD_type());
-                            params.addValue("d_v_text", item.getD_v_text());
+                            params.addValue("businessContextType", item.getBusinessContextType());
+                            params.addValue("businessSubContextType", item.getBusinessSubContextType());
+                            params.addValue("businessKey", item.getBusinessKey());
+                            params.addValue("elementNameId", item.getElementNameId());
+                            params.addValue("dataType", item.getDataType());
+                            params.addValue("dataValueText", item.getDataValueText());
                             return params;
                         })
                         .build()
@@ -102,9 +101,8 @@ public class ADEJobConfig {
                 .build();
     }
 
-    public JdbcPagingItemReader<ADEData> pagingItemReader(String selectClause, String fromClause, 
-                     String whereClause, Map<String, Order> orderByKeys, int pageSize,
-                        Map<String, Object> parameters, RowMapper<ADEData> rowMapper) throws Exception {
+    public JdbcPagingItemReader<ADEData> pagingItemReader(String selectClause, String fromClause, String whereClause, Map<String, Order> orderByKeys, int pageSize,
+                                                          Map<String, Object> parameters, RowMapper<ADEData> rowMapper) throws Exception {
         JdbcPagingItemReader<ADEData> pagingItemReader = new JdbcPagingItemReader<>();
         pagingItemReader.setDataSource(dataSource);
         pagingItemReader.setFetchSize(pageSize);
