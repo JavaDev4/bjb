@@ -1,33 +1,119 @@
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.job.builder.SimpleJobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.builder.SimpleStepBuilder;
+import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.batch.item.database.support.OraclePagingQueryProvider;
+import org.springframework.batch.item.support.AsyncItemProcessor;
+import org.springframework.batch.item.support.AsyncItemWriter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.transaction.PlatformTransactionManager;
 
-<dependency>
-    <groupId>org.mockito</groupId>
-    <artifactId>mockito-core</artifactId>
-    <version>4.5.1</version>
-    <scope>test</scope>
-</dependency>
+import javax.sql.DataSource;
+import java.util.Collections;
+import java.util.concurrent.Future;
 
+@Configuration
+public class ADEBatchJobDirectBuilderConfig {
 
+    private DataSource dataSource;
+    private JobRepository jobRepository;
+    private PlatformTransactionManager transactionManager;
 
-package com.example.myapp.utils;
+    public ADEBatchJobDirectBuilderConfig(DataSource dataSource, JobRepository jobRepository, PlatformTransactionManager transactionManager) {
+        this.dataSource = dataSource;
+        this.jobRepository = jobRepository;
+        this.transactionManager = transactionManager;
+    }
 
-import org.mockito.Mockito;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import org.reflections.Reflections;
+    @Bean
+    public Job adeJob() throws Exception {
+        JobBuilder jobBuilder = new JobBuilder("adeJob").repository(jobRepository);
+        SimpleJobBuilder simpleJobBuilder = new SimpleJobBuilder(jobBuilder);
+        return simpleJobBuilder.start(adeStep()).build();
+    }
 
-public class MockUtility {
-    
-    public static Map<Class<?>, Object> mockAllClassesInPackage(String packageName) {
-        Map<Class<?>, Object> mocks = new HashMap<>();
-        Reflections reflections = new Reflections(packageName);
-        
-        Set<Class<?>> allClasses = reflections.getSubTypesOf(Object.class);
-        
-        for (Class<?> clazz : allClasses) {
-            Object mock = Mockito.mock(clazz);
-            mocks.put(clazz, mock);
+    @Bean
+    public Step adeStep() throws Exception {
+        StepBuilder stepBuilder = new StepBuilder("adeStep").repository(jobRepository).transactionManager(transactionManager);
+        SimpleStepBuilder<ADEData, ADEData> simpleStepBuilder = new SimpleStepBuilder<>(stepBuilder);
+        simpleStepBuilder.chunk(10);
+        simpleStepBuilder.reader(adeReader());
+        simpleStepBuilder.processor(asyncProcessor());
+        simpleStepBuilder.writer(asyncWriter());
+        return simpleStepBuilder.build();
+    }
+
+    @Bean
+    public JdbcPagingItemReader<ADEData> adeReader() {
+        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
+        queryProvider.setSelectClause("SELECT id, business_context_type");
+        queryProvider.setFromClause("FROM ade_table");
+        queryProvider.setWhereClause("WHERE processed = 0");
+        queryProvider.setSortKeys(Collections.singletonMap("id", Order.ASCENDING));
+
+        JdbcPagingItemReader<ADEData> reader = new JdbcPagingItemReader<>();
+        reader.setDataSource(dataSource);
+        reader.setQueryProvider(queryProvider);
+        reader.setRowMapper(new ADEDataRowMapper());
+        reader.setPageSize(10);
+        return reader;
+    }
+
+    @Bean
+    public AsyncItemProcessor<ADEData, ADEData> asyncProcessor() throws Exception {
+        AsyncItemProcessor<ADEData, ADEData> processor = new AsyncItemProcessor<>();
+        processor.setDelegate(itemProcessor());
+        processor.setTaskExecutor(new SimpleAsyncTaskExecutor());
+        return processor;
+    }
+
+    @Bean
+    public AsyncItemWriter<ADEData> asyncWriter() throws Exception {
+        AsyncItemWriter<ADEData> writer = new AsyncItemWriter<>();
+        writer.setDelegate(itemWriter());
+        return writer;
+    }
+
+    @Bean
+    public ItemProcessor<ADEData, ADEData> itemProcessor() {
+        return item -> {
+            // Processing logic here
+            return item;
+        };
+    }
+
+    @Bean
+    public ItemWriter<ADEData> itemWriter() {
+        return items -> {
+            // Writing logic here
+        };
+    }
+
+    private static class ADEDataRowMapper implements RowMapper<ADEData> {
+        @Override
+        public ADEData mapRow(ResultSet rs, int rowNum) throws SQLException {
+            ADEData adeData = new ADEData();
+            adeData.setId(rs.getLong("id"));
+            adeData.setBusinessContextType(rs.getString("business_context_type"));
+            return adeData;
         }
-        return mocks;
+    }
+
+    // Define the ADEData class within this configuration or as a separate class if it's used elsewhere
+    public static class ADEData {
+        private Long id;
+        private String businessContextType;
+
+        // Getters and setters
     }
 }
