@@ -1,0 +1,142 @@
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.job.builder.StepBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.SimpleStepBuilder;
+import org.springframework.batch.core.step.builder.FaultTolerantStepBuilder;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
+import org.springframework.batch.item.database.support.ColumnMapRowMapper;
+import org.springframework.batch.item.support.AsyncItemProcessor;
+import org.springframework.batch.item.support.AsyncItemWriter;
+import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
+import org.springframework.batch.item.database.support.Order;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import javax.sql.DataSource;
+import java.util.Map;
+import java.util.Optional;
+
+@Configuration
+@EnableBatchProcessing
+public class ADEJobConfig {
+
+    @Autowired
+    private DataSource dataSource;
+
+    @Value("${batch.concurrencyLimit}")
+    private int concurrencyLimit;
+
+    @Bean
+    public JdbcPagingItemReader<Map<String, Object>> adeReader() throws Exception {
+        return pagingItemReader(
+                "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
+                "from e938445.acbs_migration_process",
+                "where acbs_service = 'Create Customer' and processed <> 0",
+                Map.of("party_identifier", Order.ASCENDING),
+                10,
+                null,
+                new ColumnMapRowMapper()
+        );
+    }
+
+    @Bean
+    public AsyncItemProcessor<Map<String, Object>, Map<String, Object>> adeProcessor(ItemProcessor<Map<String, Object>, Map<String, Object>> itemProcessor) {
+        AsyncItemProcessor<Map<String, Object>, Map<String, Object>> asyncItemProcessor = new AsyncItemProcessor<>();
+        asyncItemProcessor.setDelegate(itemProcessor);
+        asyncItemProcessor.setTaskExecutor(getTaskExecutor("ADE-Job-*"));
+        return asyncItemProcessor;
+    }
+
+    @Bean
+    public AsyncItemWriter<Map<String, Object>> adeWriter() {
+        AsyncItemWriter<Map<String, Object>> asyncItemWriter = new AsyncItemWriter<>();
+        asyncItemWriter.setDelegate(
+                new JdbcBatchItemWriterBuilder<Map<String, Object>>()
+                        .dataSource(dataSource)
+                        .sql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:Business_Context_Type, :Business_Sub_Context_type, :Business_Key, :Element_Name_Id, :Data_type, :Data_Value_Text)")
+                        .itemSqlParameterSourceProvider(item -> {
+                            MapSqlParameterSource params = new MapSqlParameterSource();
+                            params.addValues(item);
+                            return params;
+                        })
+                        .build()
+        );
+        return asyncItemWriter;
+    }
+
+    @Bean
+    public Step adeStep(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+        return new StepBuilder("adeStep", jobRepository)
+                .<Map<String, Object>, Map<String, Object>>chunk(10, transactionManager)
+                .reader(adeReader())
+                .processor(adeProcessor(null))
+                .writer(adeWriter())
+                .faultTolerant()
+                .taskExecutor(getTaskExecutor("ADE-Job-*", concurrencyLimit))
+                .build();
+    }
+
+    @Bean
+    public Job adeJob(JobRepository jobRepository, Step adeStep) {
+        return new JobBuilder("adeJob", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(adeStep)
+                .build();
+    }
+
+    public JdbcPagingItemReader<Map<String, Object>> pagingItemReader(String selectClause, String fromClause, String whereClause, Map<String, Order> orderByKeys, int pageSize,
+                                                                      Map<String, Object> parameters, RowMapper<Map<String, Object>> rowMapper) throws Exception {
+        JdbcPagingItemReader<Map<String, Object>> pagingItemReader = new JdbcPagingItemReader<>();
+        pagingItemReader.setDataSource(dataSource);
+        pagingItemReader.setFetchSize(pageSize);
+        pagingItemReader.setRowMapper(rowMapper);
+        pagingItemReader.setQueryProvider(getOraclePagingQueryProvider(selectClause, fromClause, whereClause, orderByKeys));
+        if (Optional.ofNullable(parameters).isPresent() && parameters.size() > 0) {
+            pagingItemReader.setParameterValues(parameters);
+        }
+        pagingItemReader.afterPropertiesSet();
+        return pagingItemReader;
+    }
+
+    public OraclePagingQueryProvider getOraclePagingQueryProvider(String selectClause, String fromClause, String whereClause, Map<String, Order> orderByKeys) {
+        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
+        queryProvider.setSelectClause(selectClause);
+        queryProvider.setFromClause(fromClause);
+        if (Optional.ofNullable(whereClause).isPresent() && StringUtils.hasText(whereClause)) {
+            queryProvider.setWhereClause(whereClause);
+        }
+        if (Optional.ofNullable(orderByKeys).isPresent() && !orderByKeys.isEmpty()) {
+            queryProvider.setSortKeys(orderByKeys);
+        }
+        return queryProvider;
+    }
+
+    public SimpleAsyncTaskExecutor getTaskExecutor(String batch) {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
+        executor.setConcurrencyLimit(concurrencyLimit);
+        executor.setThreadNamePrefix(batch);
+        return executor;
+    }
+
+    public SimpleAsyncTaskExecutor getTaskExecutor(String batch, int clientConcurrencyLimit) {
+        SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
+        executor.setConcurrencyLimit(clientConcurrencyLimit);
+        executor.setThreadNamePrefix(batch);
+        return executor;
+    }
+}
