@@ -1,10 +1,7 @@
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.job.builder.JobBuilder;
-import org.springframework.batch.core.job.builder.SimpleJobBuilder;
-import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.core.step.builder.SimpleStepBuilder;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.ItemReader;
 import org.springframework.batch.item.ItemWriter;
@@ -15,21 +12,22 @@ import org.springframework.batch.item.support.AsyncItemWriter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.jdbc.core.BeanPropertySqlParameterSourceProvider;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.transaction.PlatformTransactionManager;
-
 import javax.sql.DataSource;
-import java.util.Collections;
-import java.util.concurrent.Future;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.transaction.PlatformTransactionManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 @Configuration
-public class ADEBatchJobDirectBuilderConfig {
+public class ADEBatchJobConfig {
 
     private DataSource dataSource;
     private JobRepository jobRepository;
     private PlatformTransactionManager transactionManager;
 
-    public ADEBatchJobDirectBuilderConfig(DataSource dataSource, JobRepository jobRepository, PlatformTransactionManager transactionManager) {
+    public ADEBatchJobConfig(DataSource dataSource, JobRepository jobRepository, PlatformTransactionManager transactionManager) {
         this.dataSource = dataSource;
         this.jobRepository = jobRepository;
         this.transactionManager = transactionManager;
@@ -37,100 +35,60 @@ public class ADEBatchJobDirectBuilderConfig {
 
     @Bean
     public Job adeJob() throws Exception {
-        JobBuilder jobBuilder = new JobBuilder("adeJob").repository(jobRepository);
-        SimpleJobBuilder simpleJobBuilder = new SimpleJobBuilder(jobBuilder);
-        return simpleJobBuilder.start(adeStep()).build();
+        JobBuilder jobBuilder = new JobBuilder("adeJob")
+            .repository(jobRepository);
+        Step adeStep = adeStep();
+        return jobBuilder.start(adeStep).build();
     }
 
     @Bean
     public Step adeStep() throws Exception {
-        StepBuilder stepBuilder = new StepBuilder("adeStep").repository(jobRepository).transactionManager(transactionManager);
-        SimpleStepBuilder<ADEData, ADEData> simpleStepBuilder = new SimpleStepBuilder<>(stepBuilder);
-        simpleStepBuilder.chunk(10);
-        simpleStepBuilder.reader(adeReader());
-        simpleStepBuilder.processor(asyncProcessor());
-        simpleStepBuilder.writer(asyncWriter());
-        return simpleStepBuilder.build();
+        StepBuilder stepBuilder = new StepBuilder("adeStep")
+            .repository(jobRepository)
+            .transactionManager(transactionManager);
+        return stepBuilder
+            .<ADEData, ADEData>chunk(10)
+            .reader(adeReader())
+            .processor(adeProcessor())
+            .writer(adeWriter())
+            .build();
     }
 
     @Bean
-    public JdbcPagingItemReader<ADEData> adeReader() {
-        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
-        queryProvider.setSelectClause("SELECT id, business_context_type");
-        queryProvider.setFromClause("FROM ade_table");
-        queryProvider.setWhereClause("WHERE processed = 0");
-        queryProvider.setSortKeys(Collections.singletonMap("id", Order.ASCENDING));
-
+    public ItemReader<ADEData> adeReader() {
         JdbcPagingItemReader<ADEData> reader = new JdbcPagingItemReader<>();
         reader.setDataSource(dataSource);
-        reader.setQueryProvider(queryProvider);
+        reader.setQueryProvider(createQueryProvider());
         reader.setRowMapper(new ADEDataRowMapper());
         reader.setPageSize(10);
         return reader;
     }
 
     @Bean
-    public AsyncItemProcessor<ADEData, ADEData> asyncProcessor() throws Exception {
-        AsyncItemProcessor<ADEData, ADEData> processor = new AsyncItemProcessor<>();
-        processor.setDelegate(itemProcessor());
-        processor.setTaskExecutor(new SimpleAsyncTaskExecutor());
-        return processor;
-    }
-
-    @Bean
-    public AsyncItemWriter<ADEData> asyncWriter() throws Exception {
-        AsyncItemWriter<ADEData> writer = new AsyncItemWriter<>();
-        writer.setDelegate(itemWriter());
-        return writer;
-    }
-
-    @Bean
-    public ItemProcessor<ADEData, ADEData> itemProcessor() {
+    public ItemProcessor<ADEData, ADEData> adeProcessor() {
         return item -> {
-            // Processing logic here
-            return item;
+            // Example processor logic
+            return item; // Modify or just pass through
         };
     }
 
-@Bean
-public ItemWriter<ADEData> itemWriter() {
-    return items -> {
-        // Here you could use a JDBC template or JPA to insert the data
-        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource); // dataSource should be injected or passed somehow
-
-        // Batch update example
-        jdbcTemplate.batchUpdate(
-            "INSERT INTO ade_export_table (id, business_context_type) VALUES (?, ?)",
-            new BatchPreparedStatementSetter() {
-                public void setValues(PreparedStatement ps, int i) throws SQLException {
-                    ADEData adeData = items.get(i);
-                    ps.setLong(1, adeData.getId());
-                    ps.setString(2, adeData.getBusinessContextType());
-                }
-
-                public int getBatchSize() {
-                    return items.size();
-                }
-            }
-        );
-    };
-}
-
-    private static class ADEDataRowMapper implements RowMapper<ADEData> {
-        @Override
-        public ADEData mapRow(ResultSet rs, int rowNum) throws SQLException {
-            ADEData adeData = new ADEData();
-            adeData.setId(rs.getLong("id"));
-            adeData.setBusinessContextType(rs.getString("business_context_type"));
-            return adeData;
-        }
+    @Bean
+    public ItemWriter<ADEData> adeWriter() {
+        JdbcBatchItemWriter<ADEData> writer = new JdbcBatchItemWriter<>();
+        writer.setDataSource(dataSource);
+        writer.setSql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, " +
+                      "business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, " +
+                      ":businessKey, :elementNameId, :dataType, :dataValueText)");
+        writer.setItemSqlParameterSourceProvider(new BeanPropertySqlParameterSourceProvider<>());
+        return writer;
     }
 
-    // Define the ADEData class within this configuration or as a separate class if it's used elsewhere
-    public static class ADEData {
-        private Long id;
-        private String businessContextType;
-
-        // Getters and setters
+    private OraclePagingQueryProvider createQueryProvider() {
+        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
+        queryProvider.setSelectClause("SELECT 'CUSTOMER_MASTER' AS business_context_type, ' ' AS business_sub_context_type, " +
+                                      "party_identifier AS business_key, 'JP_AFS_CUST_NUM' AS element_name_id, 'TXT' AS data_type, " +
+                                      "oblg_1 AS data_value_text");
+        queryProvider.setFromClause("FROM e938445.acbs_migration_process");
+        queryProvider.setWhereClause("WHERE acbs_service = 'Create Customer' AND processed <> 0");
+        return queryProvider;
     }
-}
