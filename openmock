@@ -92,12 +92,29 @@ public class ADEBatchJobDirectBuilderConfig {
         };
     }
 
-    @Bean
-    public ItemWriter<ADEData> itemWriter() {
-        return items -> {
-            // Writing logic here
-        };
-    }
+@Bean
+public ItemWriter<ADEData> itemWriter() {
+    return items -> {
+        // Here you could use a JDBC template or JPA to insert the data
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource); // dataSource should be injected or passed somehow
+
+        // Batch update example
+        jdbcTemplate.batchUpdate(
+            "INSERT INTO ade_export_table (id, business_context_type) VALUES (?, ?)",
+            new BatchPreparedStatementSetter() {
+                public void setValues(PreparedStatement ps, int i) throws SQLException {
+                    ADEData adeData = items.get(i);
+                    ps.setLong(1, adeData.getId());
+                    ps.setString(2, adeData.getBusinessContextType());
+                }
+
+                public int getBatchSize() {
+                    return items.size();
+                }
+            }
+        );
+    };
+}
 
     private static class ADEDataRowMapper implements RowMapper<ADEData> {
         @Override
