@@ -1,0 +1,51 @@
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import javax.sql.DataSource;
+import org.springframework.transaction.PlatformTransactionManager;
+
+@Configuration
+@EnableBatchProcessing
+public class ADEBatchJobConfig {
+
+    private final DataSource dataSource;
+    private final JobRepository jobRepository;
+    private final PlatformTransactionManager transactionManager;
+    private final JobBuilderFactory jobBuilderFactory;
+    private final StepBuilderFactory stepBuilderFactory;
+
+    public ADEBatchJobConfig(DataSource dataSource,
+                             JobRepository jobRepository,
+                             PlatformTransactionManager transactionManager,
+                             JobBuilderFactory jobBuilderFactory,
+                             StepBuilderFactory stepBuilderFactory) {
+        this.dataSource = dataSource;
+        this.jobRepository = jobRepository;
+        this.transactionManager = transactionManager;
+        this.jobBuilderFactory = jobBuilderFactory;
+        this.stepBuilderFactory = stepBuilderFactory;
+    }
+
+    @Bean
+    public Job adeJob() throws Exception {
+        return jobBuilderFactory.get("adeJob")
+                .start(adeStep())
+                .build();
+    }
+
+    @Bean
+    public Step adeStep() throws Exception {
+        return stepBuilderFactory.get("adeStep")
+                .<String, String>chunk(10)
+                .reader(null) // define your reader
+                .processor(null) // define your processor
+                .writer(null) // define your writer
+                .transactionManager(transactionManager)
+                .build();
+    }
+}
