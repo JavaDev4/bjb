@@ -142,3 +142,47 @@ public class ADEJobConfig {
         return executor;
     }
 }
+
+
+
+
+
+--------
+import org.springframework.batch.core.BatchStatus;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JobCompletionListener implements JobExecutionListener {
+
+    @Autowired
+    private JobLauncher jobLauncher;
+
+    @Autowired
+    @Qualifier("adeJob")
+    private Job adeJob;
+
+    @Override
+    public void beforeJob(JobExecution jobExecution) {
+        // No action required before the job
+    }
+
+    @Override
+    public void afterJob(JobExecution jobExecution) {
+        if (jobExecution.getStatus() == BatchStatus.COMPLETED) {
+            String jobName = jobExecution.getJobInstance().getJobName();
+            if ("customerJob".equals(jobName) || "facJob".equals(jobName)) {
+                try {
+                    jobLauncher.run(adeJob, new JobParameters());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}
+
