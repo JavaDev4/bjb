@@ -1,16 +1,17 @@
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.job.builder.StepBuilder;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.integration.async.AsyncItemProcessor;
-import org.springframework.batch.integration.async.AsyncItemWriter;
+import org.springframework.batch.core.step.builder.FaultTolerantStepBuilder;
+import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.item.ItemWriter;
 import org.springframework.batch.item.database.JdbcPagingItemReader;
 import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.database.support.ColumnMapRowMapper;
 import org.springframework.batch.item.database.support.Order;
-import org.springframework.batch.item.ItemProcessor;
-import org.springframework.batch.item.ItemWriter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,7 +21,6 @@ import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
@@ -32,9 +32,10 @@ import java.util.Optional;
 public class ADEJobConfig {
 
     @Autowired
+    @Qualifier("FRB_GOS_SOURCE_DATASOURCE")
     private DataSource dataSource;
 
-    @Value("${batch.concurrencyLimit}")
+    @Value("${batch.concurrencyLimit:10}")
     private int concurrencyLimit;
 
     @Bean
@@ -51,36 +52,32 @@ public class ADEJobConfig {
     }
 
     @Bean
-    public AsyncItemProcessor<Map<String, Object>, Map<String, Object>> adeProcessor(ItemProcessor<Map<String, Object>, Map<String, Object>> itemProcessor) {
-        AsyncItemProcessor<Map<String, Object>, Map<String, Object>> asyncItemProcessor = new AsyncItemProcessor<>();
-        asyncItemProcessor.setDelegate(itemProcessor);
-        asyncItemProcessor.setTaskExecutor(getTaskExecutor("ADE-Job-*"));
-        return asyncItemProcessor;
+    public ItemProcessor<Map<String, Object>, Map<String, Object>> adeProcessor() {
+        return item -> {
+            // Add processing logic if needed
+            return item;
+        };
     }
 
     @Bean
-    public AsyncItemWriter<Map<String, Object>> adeWriter() {
-        AsyncItemWriter<Map<String, Object>> asyncItemWriter = new AsyncItemWriter<>();
-        asyncItemWriter.setDelegate(
-                new JdbcBatchItemWriterBuilder<Map<String, Object>>()
-                        .dataSource(dataSource)
-                        .sql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:Business_Context_Type, :Business_Sub_Context_type, :Business_Key, :Element_Name_Id, :Data_type, :Data_Value_Text)")
-                        .itemSqlParameterSourceProvider(item -> {
-                            MapSqlParameterSource params = new MapSqlParameterSource();
-                            params.addValues(item);
-                            return params;
-                        })
-                        .build()
-        );
-        return asyncItemWriter;
+    public ItemWriter<Map<String, Object>> adeWriter() {
+        return new JdbcBatchItemWriterBuilder<Map<String, Object>>()
+                .dataSource(dataSource)
+                .sql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:Business_Context_Type, :Business_Sub_Context_type, :Business_Key, :Element_Name_Id, :Data_type, :Data_Value_Text)")
+                .itemSqlParameterSourceProvider(item -> {
+                    MapSqlParameterSource params = new MapSqlParameterSource();
+                    params.addValues(item);
+                    return params;
+                })
+                .build();
     }
 
     @Bean
-    public Step adeStep(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+    public Step adeStep(JobRepository jobRepository, StepBuilderFactory stepBuilderFactory, PlatformTransactionManager transactionManager) throws Exception {
         return new StepBuilder("adeStep", jobRepository)
                 .<Map<String, Object>, Map<String, Object>>chunk(10, transactionManager)
                 .reader(adeReader())
-                .processor(adeProcessor(null))
+                .processor(adeProcessor())
                 .writer(adeWriter())
                 .faultTolerant()
                 .taskExecutor(getTaskExecutor("ADE-Job-*", concurrencyLimit))
@@ -88,7 +85,7 @@ public class ADEJobConfig {
     }
 
     @Bean
-    public Job adeJob(JobRepository jobRepository, Step adeStep) {
+    public Job adeJob(JobRepository jobRepository, @Qualifier("adeStep") Step adeStep) {
         return new JobBuilder("adeJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
                 .start(adeStep)
