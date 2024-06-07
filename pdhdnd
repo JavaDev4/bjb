@@ -1,27 +1,32 @@
-public class PhoneUtil {
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-    /**
-     * Returns the business phone if available, otherwise returns the home phone.
-     * If both are null, returns an empty string.
-     *
-     * @param homePhone    the home phone number
-     * @param businessPhone the business phone number
-     * @return the preferred phone number or an empty string if both are null
-     */
-    public static String getPreferredPhone(String homePhone, String businessPhone) {
-        if (businessPhone != null) {
-            return businessPhone;
-        } else if (homePhone != null) {
-            return homePhone;
-        } else {
-            return "";
-        }
-    }
+public class PhoneUtilTest {
 
-    public static void main(String[] args) {
-        System.out.println(getPreferredPhone(null, null));          // Output: ""
-        System.out.println(getPreferredPhone("123-456-7890", null)); // Output: "123-456-7890"
-        System.out.println(getPreferredPhone(null, "987-654-3210")); // Output: "987-654-3210"
-        System.out.println(getPreferredPhone("123-456-7890", "987-654-3210")); // Output: "987-654-3210"
+    @Test
+    public void testGetPreferredPhones() {
+        // Test case 1: Both homePhone and businessPhone are not null
+        String homePhone1 = "123-456-7890";
+        String businessPhone1 = "987-654-3210";
+        String[] expected1 = {"987-654-3210", "123-456-7890"};
+        assertArrayEquals(expected1, PhoneUtil.getPreferredPhones(homePhone1, businessPhone1));
+
+        // Test case 2: Only homePhone is not null
+        String homePhone2 = "123-456-7890";
+        String businessPhone2 = null;
+        String[] expected2 = {"123-456-7890"};
+        assertArrayEquals(expected2, PhoneUtil.getPreferredPhones(homePhone2, businessPhone2));
+
+        // Test case 3: Only businessPhone is not null
+        String homePhone3 = null;
+        String businessPhone3 = "987-654-3210";
+        String[] expected3 = {"987-654-3210"};
+        assertArrayEquals(expected3, PhoneUtil.getPreferredPhones(homePhone3, businessPhone3));
+
+        // Test case 4: Both homePhone and businessPhone are null
+        String homePhone4 = null;
+        String businessPhone4 = null;
+        String[] expected4 = {""};
+        assertArrayEquals(expected4, PhoneUtil.getPreferredPhones(homePhone4, businessPhone4));
     }
 }
