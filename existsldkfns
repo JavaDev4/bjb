@@ -1,0 +1,72 @@
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.transaction.PlatformTransactionManager;
+import javax.sql.DataSource;
+import java.util.Map;
+
+@Configuration
+@EnableBatchProcessing
+public class ADEJobConfig {
+
+    @Autowired
+    private BatchJobConfigImpl<ADEData, ADEData> batchJobConfig;
+
+    @Bean
+    public Step adeStep(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
+        return batchJobConfig.getStep(
+                "adeStep",
+                10,
+                jobRepository,
+                transactionManager,
+                "adeJob",
+                batchJobConfig.pagingItemReader(
+                        "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
+                        "from e938445.acbs_migration_process",
+                        "where acbs_service = 'Create Customer' and processed <> 0",
+                        Map.of("party_identifier", Order.ASCENDING),
+                        10,
+                        null,
+                        new ADEDataRowMapper()
+                ),
+                batchJobConfig.asyncProcessor("adeJob", itemProcessor()),
+                batchJobConfig.asyncWriter(batchJobConfig.jdbcBatchItemWriter(
+                        "INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)",
+                        item -> {
+                            MapSqlParameterSource params = new MapSqlParameterSource();
+                            params.addValue("businessContextType", item.getBusinessContextType());
+                            params.addValue("businessSubContextType", item.getBusinessSubContextType());
+                            params.addValue("businessKey", item.getBusinessKey());
+                            params.addValue("elementNameId", item.getElementNameId());
+                            params.addValue("dataType", item.getDataType());
+                            params.addValue("dataValueText", item.getDataValueText());
+                            return params;
+                        }
+                ))
+        );
+    }
+
+    @Bean
+    public ItemProcessor<ADEData, ADEData> itemProcessor() {
+        return item -> {
+            // Add processing logic if needed
+            return item;
+        };
+    }
+
+    @Bean
+    public Job adeJob(JobRepository jobRepository, @Qualifier("adeStep") Step adeStep) {
+        return new JobBuilder("adeJob", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(adeStep)
+                .build();
+    }
+}
