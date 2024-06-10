@@ -60,7 +60,7 @@ public class ADEJobConfig {
                 transactionManager,
                 batchName,
                 getPagingItemReader(),
-                batchJobConfigImpl.asyncProcessor(batchName, adeData -> adeData),
+                batchJobConfigImpl.asyncProcessor(batchName, itemProcessor()),
                 writer
         );
     }
@@ -86,5 +86,13 @@ public class ADEJobConfig {
         orderByKeys.put(orderByClause, Order.ASCENDING);
         queryProvider.setSortKeys(orderByKeys);
         return queryProvider;
+    }
+
+    @Bean
+    public ItemProcessor<ADEData, ADEData> itemProcessor() {
+        return item -> {
+            // Add processing logic if needed
+            return item;
+        };
     }
 }
