@@ -1,67 +1,81 @@
-import static org.assertj.core.api.Assertions.assertThat;
-
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import javax.sql.DataSource;
 
-@ExtendWith(SpringExtension.class)
-@SpringBootTest
-@ContextConfiguration(classes = {ADEJobConfigTest.TestConfig.class, ADEJobConfig.class})
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@EnableBatchProcessing
 public class ADEJobConfigTest {
 
-    @Autowired
-    private Job adeJob;
+    @Mock
+    private JobRepository jobRepository;
 
-    @Autowired
-    @Qualifier("adeStep")
-    private Step adeStep;
+    @Mock
+    private PlatformTransactionManager transactionManager;
 
-    @Test
-    public void testJobConfiguration() {
-        assertThat(adeJob).isNotNull();
-        assertThat(adeStep).isNotNull();
+    @Mock
+    private BatchJobConfigImpl<ADEData, ADEData> batchJobConfigImpl;
+
+    @Mock
+    private ItemProcessor<ADEData, ADEData> itemProcessor;
+
+    @InjectMocks
+    private ADEJobConfig adeJobConfig;
+
+    private DataSource dataSource;
+
+    @BeforeEach
+    public void setup() throws Exception {
+        dataSource = new DriverManagerDataSource("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
+
+        when(batchJobConfigImpl.pagingItemReader(
+                "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
+                "from e938445.acbs_migration_process",
+                "where acbs_service = 'Create Customer' and processed <> 0",
+                Map.of("party_identifier", Order.ASCENDING),
+                10,
+                null,
+                new ADEDataRowMapper()
+        )).thenReturn(new JdbcPagingItemReader<>());
+
+        when(batchJobConfigImpl.jdbcBatchItemWriter(
+                "INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)",
+                new ADEDataSqlParameterSourceProvider()
+        )).thenReturn(new JdbcBatchItemWriter<>());
+
+        when(batchJobConfigImpl.asyncWriter(new JdbcBatchItemWriter<>())).thenReturn(new AsyncItemWriter<>());
+
+        when(batchJobConfigImpl.getStep(
+                "adeStep",
+                10,
+                jobRepository,
+                transactionManager,
+                "ADE_JOB",
+                new JdbcPagingItemReader<>(),
+                itemProcessor,
+                new AsyncItemWriter<>()
+        )).thenReturn(new StepBuilder("adeStep", jobRepository).chunk(10, transactionManager).build());
     }
 
-    @Configuration
-    @EnableBatchProcessing
-    static class TestConfig {
+    @Test
+    public void testAdeJobConfig() throws Exception {
+        Step adeStep = adeJobConfig.adeStep(jobRepository, transactionManager);
+        Job adeJob = adeJobConfig.adeJob(jobRepository, adeStep);
 
-        @Bean
-        public JobRepository jobRepository() {
-            // Mock JobRepository bean creation
-            return null;
-        }
-
-        @Bean
-        public PlatformTransactionManager transactionManager() {
-            // Mock PlatformTransactionManager bean creation
-            return null;
-        }
-
-        @Bean
-        public DataSource dataSource() {
-            // Mock DataSource bean creation
-            DriverManagerDataSource dataSource = new DriverManagerDataSource();
-            dataSource.setDriverClassName("org.h2.Driver");
-            dataSource.setUrl("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1");
-            dataSource.setUsername("sa");
-            dataSource.setPassword("");
-            return dataSource;
-        }
+        assertNotNull(adeJob);
+        assertNotNull(adeStep);
     }
 }
