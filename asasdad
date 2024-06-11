@@ -1,3 +1,6 @@
+
+
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -8,10 +11,13 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.core.step.builder.StepBuilderHelper;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.when;
@@ -41,6 +47,34 @@ public class ADEJobConfigTest {
     public void setup() throws Exception {
         dataSource = new DriverManagerDataSource("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "sa", "");
 
+        JdbcPagingItemReader<ADEData> itemReader = new JdbcPagingItemReader<>();
+        itemReader.setDataSource(dataSource);
+        itemReader.setFetchSize(10);
+        itemReader.setRowMapper(new ADEDataRowMapper());
+        itemReader.setQueryProvider(batchJobConfigImpl.getOraclePagingQueryProvider(
+                "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
+                "from e938445.acbs_migration_process",
+                "where acbs_service = 'Create Customer' and processed <> 0",
+                Map.of("party_identifier", Order.ASCENDING)
+        ));
+        itemReader.afterPropertiesSet();
+
+        JdbcBatchItemWriter<ADEData> itemWriter = new JdbcBatchItemWriter<>();
+        itemWriter.setDataSource(dataSource);
+        itemWriter.setSql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)");
+        itemWriter.setItemSqlParameterSourceProvider(new ADEDataSqlParameterSourceProvider());
+        itemWriter.afterPropertiesSet();
+
+        AsyncItemWriter<ADEData> asyncItemWriter = new AsyncItemWriter<>();
+        asyncItemWriter.setDelegate(itemWriter);
+
+        Step step = new StepBuilder("adeStep", jobRepository)
+                .<ADEData, ADEData>chunk(10, transactionManager)
+                .reader(itemReader)
+                .processor(itemProcessor)
+                .writer(asyncItemWriter)
+                .build();
+
         when(batchJobConfigImpl.pagingItemReader(
                 "Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text",
                 "from e938445.acbs_migration_process",
@@ -49,14 +83,14 @@ public class ADEJobConfigTest {
                 10,
                 null,
                 new ADEDataRowMapper()
-        )).thenReturn(new JdbcPagingItemReader<>());
+        )).thenReturn(itemReader);
 
         when(batchJobConfigImpl.jdbcBatchItemWriter(
                 "INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)",
                 new ADEDataSqlParameterSourceProvider()
-        )).thenReturn(new JdbcBatchItemWriter<>());
+        )).thenReturn(itemWriter);
 
-        when(batchJobConfigImpl.asyncWriter(new JdbcBatchItemWriter<>())).thenReturn(new AsyncItemWriter<>());
+        when(batchJobConfigImpl.asyncWriter(itemWriter)).thenReturn(asyncItemWriter);
 
         when(batchJobConfigImpl.getStep(
                 "adeStep",
@@ -64,10 +98,10 @@ public class ADEJobConfigTest {
                 jobRepository,
                 transactionManager,
                 "ADE_JOB",
-                new JdbcPagingItemReader<>(),
+                itemReader,
                 itemProcessor,
-                new AsyncItemWriter<>()
-        )).thenReturn(new StepBuilder("adeStep", jobRepository).chunk(10, transactionManager).build());
+                asyncItemWriter
+        )).thenReturn(step);
     }
 
     @Test
