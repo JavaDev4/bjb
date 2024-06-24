@@ -1,94 +1,81 @@
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.Step;
-import org.springframework.batch.core.job.builder.JobBuilder;
-import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.batch.item.ItemProcessor;
-import org.springframework.batch.item.ItemReader;
-import org.springframework.batch.item.ItemWriter;
-import org.springframework.batch.item.database.JdbcPagingItemReader;
-import org.springframework.batch.item.database.support.OraclePagingQueryProvider;
-import org.springframework.batch.item.support.AsyncItemProcessor;
-import org.springframework.batch.item.support.AsyncItemWriter;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.core.task.SimpleAsyncTaskExecutor;
-import org.springframework.jdbc.core.BeanPropertySqlParameterSourceProvider;
-import org.springframework.jdbc.core.RowMapper;
-import javax.sql.DataSource;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.transaction.PlatformTransactionManager;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import org.springframework.stereotype.Component;
 
-@Configuration
-public class ADEBatchJobConfig {
+@Component
+public class BatchNameHolder {
+    private String batchName;
 
-    private DataSource dataSource;
-    private JobRepository jobRepository;
-    private PlatformTransactionManager transactionManager;
-
-    public ADEBatchJobConfig(DataSource dataSource, JobRepository jobRepository, PlatformTransactionManager transactionManager) {
-        this.dataSource = dataSource;
-        this.jobRepository = jobRepository;
-        this.transactionManager = transactionManager;
+    public synchronized void setBatchName(String batchName) {
+        this.batchName = batchName;
     }
 
-    @Bean
-    public Job adeJob() throws Exception {
-        JobBuilder jobBuilder = new JobBuilder("adeJob")
-            .repository(jobRepository);
-        Step adeStep = adeStep();
-        return jobBuilder.start(adeStep).build();
+    public synchronized String getBatchName() {
+        return batchName;
     }
 
-    @Bean
-    public Step adeStep() throws Exception {
-        StepBuilder stepBuilder = new StepBuilder("adeStep")
-            .repository(jobRepository)
-            .transactionManager(transactionManager);
-        return stepBuilder
-            .<ADEData, ADEData>chunk(10)
-            .reader(adeReader())
-            .processor(adeProcessor())
-            .writer(adeWriter())
-            .build();
+    public synchronized void clear() {
+        this.batchName = null;
+    }
+}
+
+
+
+-------
+
+
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobParameter;
+import org.springframework.batch.core.listener.JobExecutionListenerSupport;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JobUtils extends JobExecutionListenerSupport {
+
+    private final BatchNameHolder batchNameHolder;
+
+    @Autowired
+    public JobUtils(BatchNameHolder batchNameHolder) {
+        this.batchNameHolder = batchNameHolder;
     }
 
-    @Bean
-    public ItemReader<ADEData> adeReader() {
-        JdbcPagingItemReader<ADEData> reader = new JdbcPagingItemReader<>();
-        reader.setDataSource(dataSource);
-        reader.setQueryProvider(createQueryProvider());
-        reader.setRowMapper(new ADEDataRowMapper());
-        reader.setPageSize(10);
-        return reader;
+    @Override
+    public void beforeJob(JobExecution jobExecution) {
+        JobParameter batchNameParam = jobExecution.getJobParameters().getParameters().get("BATCH_NAME");
+        if (batchNameParam != null) {
+            String batchName = batchNameParam.getValue().toString();
+            batchNameHolder.setBatchName(batchName);
+        } else {
+            System.out.println("BATCH_NAME parameter is not provided for this job.");
+        }
     }
 
-    @Bean
-    public ItemProcessor<ADEData, ADEData> adeProcessor() {
-        return item -> {
-            // Example processor logic
-            return item; // Modify or just pass through
-        };
+    @Override
+    public void afterJob(JobExecution jobExecution) {
+        // Optionally keep the batch name for later use or clear it here
+        // batchNameHolder.clear();
+    }
+}
+----
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class SomeService {
+
+    private final BatchNameHolder batchNameHolder;
+
+    @Autowired
+    public SomeService(BatchNameHolder batchNameHolder) {
+        this.batchNameHolder = batchNameHolder;
     }
 
-    @Bean
-    public ItemWriter<ADEData> adeWriter() {
-        JdbcBatchItemWriter<ADEData> writer = new JdbcBatchItemWriter<>();
-        writer.setDataSource(dataSource);
-        writer.setSql("INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, " +
-                      "business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, " +
-                      ":businessKey, :elementNameId, :dataType, :dataValueText)");
-        writer.setItemSqlParameterSourceProvider(new BeanPropertySqlParameterSourceProvider<>());
-        return writer;
+    public void performTask() {
+        String batchName = batchNameHolder.getBatchName();
+        if ("specialBatchJob".equals(batchName)) {
+            System.out.println("Performing task for specialBatchJob.");
+        } else {
+            System.out.println("No special tasks for this batch.");
+        }
     }
-
-    private OraclePagingQueryProvider createQueryProvider() {
-        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
-        queryProvider.setSelectClause("SELECT 'CUSTOMER_MASTER' AS business_context_type, ' ' AS business_sub_context_type, " +
-                                      "party_identifier AS business_key, 'JP_AFS_CUST_NUM' AS element_name_id, 'TXT' AS data_type, " +
-                                      "oblg_1 AS data_value_text");
-        queryProvider.setFromClause("FROM e938445.acbs_migration_process");
-        queryProvider.setWhereClause("WHERE acbs_service = 'Create Customer' AND processed <> 0");
-        return queryProvider;
-    }
+}
