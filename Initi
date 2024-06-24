@@ -78,3 +78,30 @@ public class DescriptionService {
         });
     }
 }
+
+
+
+
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.listener.JobExecutionListenerSupport;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JobUtils extends JobExecutionListenerSupport {
+
+    private static ThreadLocal<String> currentJobName = new ThreadLocal<>();
+
+    @Override
+    public void beforeJob(JobExecution jobExecution) {
+        currentJobName.set(jobExecution.getJobInstance().getJobName());
+    }
+
+    @Override
+    public void afterJob(JobExecution jobExecution) {
+        currentJobName.remove();
+    }
+
+    public static String getCurrentJobName() {
+        return currentJobName.get();
+    }
+}
