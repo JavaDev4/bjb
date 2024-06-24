@@ -27,4 +27,31 @@ public class DescriptionService {
         }
         return null;
     }
+
+
+import org.springframework.batch.core.Job;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+@Component
+public class JobChecker {
+
+    private JobService jobService;
+
+    @Autowired
+    public JobChecker(Job job) {
+        this.jobService = new JobService(job);
+    }
+
+    public void checkJobName() {
+        String jobName = jobService.getJobName();
+        if ("MySpecificJob".equals(jobName)) {
+            System.out.println("This is the job we were looking for!");
+            // Additional logic can be implemented here
+        } else {
+            System.out.println("This is not the job we were looking for.");
+        }
+    }
+}
+
 }
