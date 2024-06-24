@@ -70,11 +70,11 @@ public class DescriptionService {
     }
 
     public String getDescriptionByCup(String cup) {
-        String sql = "SELECT description FROM literal WHERE cup = ?";
-        return jdbcTemplate.queryForObject(sql, new Object[]{cup}, String.class);
+        String sql = "SELECT description, hvalue FROM literal WHERE cup = ?";
+        return jdbcTemplate.queryForObject(sql, new Object[]{cup}, (rs, rowNum) -> {
+            String description = rs.getString("description");
+            String hvalue = rs.getString("hvalue");
+            return description + " " + hvalue; // Concatenate the description and hvalue with a space
+        });
     }
 }
-
-
-
-	
