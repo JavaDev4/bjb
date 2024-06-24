@@ -1,29 +1,30 @@
-import com.openpojo.reflection.PojoClass;
-import com.openpojo.reflection.PojoClassFilter;
-import com.openpojo.reflection.filters.FilterChain;
-import com.openpojo.reflection.filters.FilterPackageInfo;
-import com.openpojo.validation.PojoValidator;
-import com.openpojo.validation.ValidatorBuilder;
-import com.openpojo.validation.rule.impl.NoPublicFieldsRule;
-import com.openpojo.validation.test.impl.GetterTester;
-import com.openpojo.validation.test.impl.SetterTester;
-import org.junit.Test;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
-public class PersonTest {
+public class DescriptionService {
 
-    @Test
-    public void validatePersonClass() {
-        // Create a PojoValidator
-        PojoValidator validator = ValidatorBuilder.create()
-                .with(new NoPublicFieldsRule()) // Ensure no public fields
-                .with(new GetterTester()) // Test getters
-                .with(new SetterTester()) // Test setters
-                .build();
+    private DataSource dataSource;
 
-        // Filter out package-info classes
-        PojoClassFilter filter = new FilterChain(new FilterPackageInfo());
+    public DescriptionService(DataSource dataSource) {
+        this.dataSource = dataSource;
+    }
 
-        // Validate the Person class within the specified package
-        validator.validate("com.example.model", filter);
+    public String getDescriptionByCup(String cup) {
+        String sql = "SELECT description FROM literal WHERE cup = ?";
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, cup);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("description");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }
