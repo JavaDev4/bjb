@@ -1,0 +1,116 @@
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
+import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.explore.JobExplorer;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.SimpleStepBuilder;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import javax.sql.DataSource;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class ADEJobConfig {
+
+    @Autowired
+    @Qualifier("acbsDataSource")
+    private DataSource acbsDataSource;
+
+    @Autowired
+    private JobBuilderFactory jobBuilderFactory;
+
+    @Autowired
+    private StepBuilderFactory stepBuilderFactory;
+
+    @Autowired
+    private JobExplorer jobExplorer;
+
+    @Value("${frb-batch.ade.batch-page-size}")
+    private int pageSize;
+
+    @Value("${frb-batch.ade.batch.chunk-size}")
+    private int chunkSize;
+
+    @Autowired
+    private BatchJobConfigImpl<ADEData, ADEData> batchJobConfigImpl;
+
+    @Autowired
+    private AdeProcessor adeProcessor;
+
+    @Value("${frb-batch.ade.select-clause}")
+    private String selectclause;
+
+    @Value("${frb-batch.ade.from-clause}")
+    private String fromclause;
+
+    @Value("${frb-batch.ade.where-clause}")
+    private String whereclause;
+
+    @Value("${frb-batch.ade.order-by-clause}")
+    private String orderByClause;
+
+    @Value("${frb-batch.ade.insert-query}")
+    private String insertQuery;
+
+    @Value("ADE_JOB")
+    private String batchName;
+
+    private static final String jobName = "adeJob";
+    private static final String stepName = "adeStep";
+
+    @Bean(name = jobName)
+    public Job adeJob(JobRepository jobRepository, @Qualifier(stepName) org.springframework.batch.core.Step step) {
+        return jobBuilderFactory.get(jobName)
+                .repository(jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(step)
+                .build();
+    }
+
+    @Bean(name = stepName)
+    public org.springframework.batch.core.Step adeStep(JobRepository jobRepository, PlatformTransactionManager transactionManager)
+            throws Exception {
+        JdbcPagingItemReader<ADEData> reader = getPagingItemReader();
+        return stepBuilderFactory.get(stepName)
+                .<ADEData, ADEData>chunk(chunkSize)
+                .reader(reader)
+                .processor(adeProcessor)
+                .writer(batchJobConfigImpl.jdbcBatchItemWriter(acbsDataSource, insertQuery))
+                .repository(jobRepository)
+                .transactionManager(transactionManager)
+                .build();
+    }
+
+    @Bean
+    public JdbcPagingItemReader<ADEData> getPagingItemReader() throws Exception {
+        Map<String, Object> parameters = getQueryParams();
+
+        JobExecution jobExecution = jobExplorer.getLastJobExecution(jobName);
+        String batchName = jobExecution.getJobParameters().getString("batchName", "defaultBatchName");
+
+        System.out.println("Batch Name: " + batchName);
+
+        return batchJobConfigImpl.pagingItemReader(selectclause, fromclause, whereclause,
+                Collections.singletonMap(orderByClause, org.springframework.batch.item.database.Order.ASCENDING),
+                pageSize, parameters, new ADEDataRowMapper());
+    }
+
+    private Map<String, Object> getQueryParams() {
+        Map<String, Object> parameters = new HashMap<>();
+        // Add your query parameters here if needed
+        return parameters;
+    }
+}
