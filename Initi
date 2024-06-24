@@ -55,3 +55,26 @@ public class JobChecker {
 }
 
 }
+
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import javax.sql.DataSource;
+
+@Service
+public class DescriptionService {
+    private final JdbcTemplate jdbcTemplate;
+
+    public DescriptionService(DataSource dataSource) {
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
+    }
+
+    public String getDescriptionByCup(String cup) {
+        String sql = "SELECT description FROM literal WHERE cup = ?";
+        return jdbcTemplate.queryForObject(sql, new Object[]{cup}, String.class);
+    }
+}
+
+
+
+	
