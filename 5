@@ -1,45 +1,35 @@
-JdbcPagingItemReader<ADEFacilityDto> reader = new JdbcPagingItemReader<>();
-        reader.setDataSource(acbsDataSource);
-        reader.setPageSize(10);
-        reader.setRowMapper(new ADEFacilityRowMapper());
+@Bean(name = "ADE_FACILITY_READER")
+public JdbcPagingItemReader<ADEFacilityDto> getFacilityADEPagingItemReader() throws Exception {
+    Map<String, Object> parameters = getQueryParams();
+    String selectClause = "SELECT a.portfolio_identifier, a.facility_identifier, LPAD(a.obligor, 4, '0'), "
+            + "d.DC_3_300_PURPOSE_CODE, n.nl_dbid_value, n.nl_dbid_code, n.nl_dbid_desc, "
+            + "LPAD(a.obligation, 4, '0') as dataValueText";
+    String fromClause = "FROM acbs_frb_dev.acbs_migration_process a "
+            + "JOIN acbs_frb_dev.dc3300 d ON a.obligor = d.dc_3_300_obligor "
+            + "JOIN acbs_frb_dev.numeric_literals n ON d.DC_3_300_PURPOSE_CODE = n.nl_dbid_value";
+    String whereClause = "WHERE a.acos_service = 'Create Facility' AND a.processed <> 0 AND n.nl_dbid_code = 'F086'";
+    String orderByClause = "a.party_identifier ASC";
 
-        PagingQueryProvider queryProvider = createQueryProvider(selectClause, fromClause, whereClause, orderByClause);
-        reader.setQueryProvider(queryProvider);
-        reader.setParameterValues(parameters);
+    JdbcPagingItemReader<ADEFacilityDto> reader = new JdbcPagingItemReader<>();
+    reader.setDataSource(acbsDataSource);
+    reader.setPageSize(10);
+    reader.setRowMapper(new ADEFacilityRowMapper());
 
-        return reader;
+    SqlPagingQueryProviderFactoryBean queryProvider = new SqlPagingQueryProviderFactoryBean();
+    queryProvider.setDataSource(acbsDataSource);
+    queryProvider.setSelectClause(selectClause);
+    queryProvider.setFromClause(fromClause);
+    queryProvider.setWhereClause(whereClause);
+    queryProvider.setSortKey(orderByClause);
+
+    try {
+        reader.setQueryProvider(queryProvider.getObject());
+    } catch (Exception e) {
+        logger.error("Error creating query provider", e);
+        throw new RuntimeException("Failed to create query provider", e);
     }
 
-    private PagingQueryProvider createQueryProvider(String selectClause, String fromClause, String whereClause, String orderByClause) {
-        SqlPagingQueryProviderFactoryBean factory = new SqlPagingQueryProviderFactoryBean();
-        factory.setDataSource(acbsDataSource);
-        factory.setSelectClause(selectClause);
-        factory.setFromClause(fromClause);
-        factory.setWhereClause(whereClause);
-        factory.setSortKey(orderByClause);
+    reader.setParameterValues(parameters);
 
-        try {
-            return factory.getObject();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create query provider", e);
-        }
-    }
-
-    @Bean(name = "ADE_FACILITY_WRITER")
-    public JdbcBatchItemWriter<ADEFacilityDto> adeFacilityWriter() {
-        String insertQuery = "INSERT INTO facility_table (business_context_type, business_sub_context_type, "
-                + "business_key, element_name_id, data_type, data_value_text) VALUES (?, ?, ?, ?, ?, ?)";
-
-        return new JdbcBatchItemWriterBuilder<ADEFacilityDto>()
-                .itemPreparedStatementSetter((item, ps) -> {
-                    ps.setString(1, "CUSTOMER_MASTER");
-                    ps.setString(2, item.getBusiness_Sub_Context_Type());
-                    ps.setString(3, item.getPortfolio_identifier() + item.getFacility_identifier());
-                    ps.setString(4, item.getBid_value() + item.getBid_descirption());
-                    ps.setString(5, "TXT");
-                    ps.setString(6, item.getDataTextValue());
-                })
-                .sql(insertQuery)
-                .dataSource(acbsDataSource)
-                .build();
-    }
+    return reader;
+}
