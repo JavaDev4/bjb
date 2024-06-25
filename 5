@@ -1,0 +1,45 @@
+JdbcPagingItemReader<ADEFacilityDto> reader = new JdbcPagingItemReader<>();
+        reader.setDataSource(acbsDataSource);
+        reader.setPageSize(10);
+        reader.setRowMapper(new ADEFacilityRowMapper());
+
+        PagingQueryProvider queryProvider = createQueryProvider(selectClause, fromClause, whereClause, orderByClause);
+        reader.setQueryProvider(queryProvider);
+        reader.setParameterValues(parameters);
+
+        return reader;
+    }
+
+    private PagingQueryProvider createQueryProvider(String selectClause, String fromClause, String whereClause, String orderByClause) {
+        SqlPagingQueryProviderFactoryBean factory = new SqlPagingQueryProviderFactoryBean();
+        factory.setDataSource(acbsDataSource);
+        factory.setSelectClause(selectClause);
+        factory.setFromClause(fromClause);
+        factory.setWhereClause(whereClause);
+        factory.setSortKey(orderByClause);
+
+        try {
+            return factory.getObject();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create query provider", e);
+        }
+    }
+
+    @Bean(name = "ADE_FACILITY_WRITER")
+    public JdbcBatchItemWriter<ADEFacilityDto> adeFacilityWriter() {
+        String insertQuery = "INSERT INTO facility_table (business_context_type, business_sub_context_type, "
+                + "business_key, element_name_id, data_type, data_value_text) VALUES (?, ?, ?, ?, ?, ?)";
+
+        return new JdbcBatchItemWriterBuilder<ADEFacilityDto>()
+                .itemPreparedStatementSetter((item, ps) -> {
+                    ps.setString(1, "CUSTOMER_MASTER");
+                    ps.setString(2, item.getBusiness_Sub_Context_Type());
+                    ps.setString(3, item.getPortfolio_identifier() + item.getFacility_identifier());
+                    ps.setString(4, item.getBid_value() + item.getBid_descirption());
+                    ps.setString(5, "TXT");
+                    ps.setString(6, item.getDataTextValue());
+                })
+                .sql(insertQuery)
+                .dataSource(acbsDataSource)
+                .build();
+    }
