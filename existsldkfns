@@ -1,98 +1,55 @@
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.Step;
-import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.transaction.PlatformTransactionManager;
+Certainly! Below is an example that demonstrates how to use a value returned from one method in a switch-case statement as part of a condition check in another method.
 
-@Configuration
-@EnableBatchProcessing
-public class ADEJobConfig {
+```java
+public class ConditionCheckExample {
 
-    @Value("${batch.page-size}")
-    int pageSize;
-
-    @Autowired
-    private BatchJobConfigImpl<ADEData, ADEData> batchJobConfigImpl;
-
-    private static final String jobName = "adeJob";
-    private static final String stepName = "adeStep";
-
-    @Value("Select 'CUSTOMER_MASTER' as Business_Context_Type, ' ' as Business_Sub_Context_type, party_identifier as Business_Key, 'JP_AFS_CUST_NUM' as Element_Name_Id, 'TXT' as Data_type, oblg_1 as Data_Value_Text")
-    private String selectClause;
-
-    @Value("from e938445.acbs_migration_process")
-    private String fromClause;
-
-    @Value("where acbs_service = 'Create Customer' and processed <> 0")
-    private String whereClause;
-
-    @Value("party_identifier")
-    private String orderByClause;
-
-    @Value("ADE_JOB")
-    private String batchName;
-
-    @Bean(name = jobName)
-    public Job adeJob(JobRepository jobRepository, @Qualifier(stepName) Step step) {
-        return new JobBuilder(jobName, jobRepository)
-                .incrementer(new RunIdIncrementer())
-                .start(step)
-                .build();
+    public static void main(String[] args) {
+        ConditionCheckExample example = new ConditionCheckExample();
+        
+        // First method call
+        String resultFromFirstMethod = example.firstMethod(1);
+        
+        // Second method call using the result from the first method
+        String finalResult = example.secondMethod(resultFromFirstMethod, "AnotherString");
+        
+        System.out.println("Final Result: " + finalResult);
     }
 
-    @Bean(name = stepName)
-    public Step adeStep(JobRepository jobRepository, PlatformTransactionManager transactionManager) throws Exception {
-        AsyncItemWriter<ADEData> writer = batchJobConfigImpl.asyncWriter(
-                batchJobConfigImpl.jdbcBatchItemWriter(
-                        "INSERT INTO acos_frb_dev.res_ade_export (business_context_type, business_sub_context_type, business_key, element_name_id, data_type, data_value_text) VALUES (:businessContextType, :businessSubContextType, :businessKey, :elementNameId, :dataType, :dataValueText)",
-                        new ADEDataSqlParameterSourceProvider()
-                )
-        );
-        return batchJobConfigImpl.getStep(
-                stepName,
-                pageSize,
-                jobRepository,
-                transactionManager,
-                batchName,
-                getPagingItemReader(),
-                batchJobConfigImpl.asyncProcessor(batchName, itemProcessor()),
-                writer
-        );
+    // First method with switch-case that returns a string
+    public String firstMethod(int value) {
+        String result;
+        switch (value) {
+            case 1:
+                result = "ValueOne";
+                break;
+            case 2:
+                result = "ValueTwo";
+                break;
+            case 3:
+                result = "ValueThree";
+                break;
+            default:
+                result = "Unknown";
+                break;
+        }
+        return result;
     }
 
-    @Bean
-    public JdbcPagingItemReader<ADEData> getPagingItemReader() throws Exception {
-        Map<String, Object> parameters = getQueryParams();
-        OraclePagingQueryProvider queryProvider = getOraclePagingQueryProvider(selectClause, fromClause, whereClause);
-        return batchJobConfigImpl.pagingItemReader(queryProvider, parameters, new ADEDataRowMapper());
-    }
-
-    private Map<String, Object> getQueryParams() {
-        Map<String, Object> parameters = new HashMap<>();
-        return parameters;
-    }
-
-    private OraclePagingQueryProvider getOraclePagingQueryProvider(String selectClause, String fromClause, String whereClause) {
-        OraclePagingQueryProvider queryProvider = new OraclePagingQueryProvider();
-        queryProvider.setSelectClause(selectClause);
-        queryProvider.setFromClause(fromClause);
-        queryProvider.setWhereClause(whereClause);
-        Map<String, Order> orderByKeys = new HashMap<>();
-        orderByKeys.put(orderByClause, Order.ASCENDING);
-        queryProvider.setSortKeys(orderByKeys);
-        return queryProvider;
-    }
-
-    @Bean
-    public ItemProcessor<ADEData, ADEData> itemProcessor() {
-        return item -> {
-            // Add processing logic if needed
-            return item;
-        };
+    // Second method that takes the result of the first method and another string as conditions
+    public String secondMethod(String firstCondition, String secondCondition) {
+        if ("ValueOne".equals(firstCondition) && "AnotherString".equals(secondCondition)) {
+            return "Condition Met: ValueOne and AnotherString";
+        } else if ("ValueTwo".equals(firstCondition) && "AnotherString".equals(secondCondition)) {
+            return "Condition Met: ValueTwo and AnotherString";
+        } else {
+            return "Conditions Not Met";
+        }
     }
 }
+```
+
+In this example:
+1. `firstMethod(int value)` uses a switch-case statement to return a string based on the integer value provided.
+2. `secondMethod(String firstCondition, String secondCondition)` takes two strings as parameters and checks the conditions using an `if-else` statement.
+
+The `main` method demonstrates how to call these methods and use the result of the first method as part of the condition check in the second method.
