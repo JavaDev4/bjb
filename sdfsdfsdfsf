@@ -1,0 +1,42 @@
+SELECT DISTINCT 
+    am.IDENTIFIER,
+    am.ECI,
+    0 as GCID,
+    0 as UCN,
+    am.processed,
+    COALESCE(
+        TO_CLOB(
+            JSON_ARRAYAGG(
+                JSON_OBJECT(
+                    'oblig' VALUE dci.dc_i_120_obligor,
+                    'name1' VALUE TRIM(dci.dc_i_120_name),
+                    'name2' VALUE TRIM(dci.dc_i_120_name_continuation),
+                    'addr1' VALUE TRIM(dci.dc_i_120_address_1),
+                    'addr2' VALUE TRIM(dci.dc_i_120_address_2),
+                    'addr3' VALUE TRIM(dci.dc_i_120_address_3),
+                    'city' VALUE TRIM(dci.dc_i_120_city),
+                    'state' VALUE TRIM(dci.dc_i_120_state),
+                    'zip_code' VALUE TRIM(dci.dc_i_120_zip_code)
+                ) RETURNING CLOB
+            ) RETURNING CLOB,
+            TO_CLOB('[]')
+        )
+    ) AS addr_list_jsonstring
+FROM 
+    ACBS_FRB_DEV.acbs_migration_runbook am
+LEFT JOIN acbs_frb_dev.dci120 dci ON am.obligor = dci.dc_i_120_obligor
+WHERE 
+    am.ACBS_SERVICE = 'Create Customer'
+    AND am.IDENTIFIER IS NOT NULL
+    AND am.obligor NOT IN (
+        SELECT 
+            runbook.obligor 
+        FROM 
+            ACBS_FRB_DEV.ACBS_MIGRATION_RUNBOOK runbook 
+        WHERE 
+            runbook.ACBS_SERVICE = 'Add Address Customer'
+    )
+GROUP BY 
+    am.IDENTIFIER,
+    am.ECI,
+    am.processed;
