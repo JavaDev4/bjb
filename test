@@ -91,4 +91,63 @@ public class CustomerBatchJobConfig {
                 .build();
     }
 }
+-------/4444
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.Step;
+import org.springframework.batch.core.configuration.annotation.JobScope;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
 
+@Configuration
+public class CustomerBatchJobConfig {
+
+    @Autowired
+    private JobRepository jobRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private BatchJobConfigImpl<?, ?> batchJobConfig;
+
+    @Autowired
+    private DeleteDataJobExecutionListener deleteDataJobExecutionListener;
+
+    @Bean
+    public Job customerJob() throws Exception {
+        return new JobBuilder("customerJob", jobRepository)
+                .listener(deleteDataJobExecutionListener)
+                .start(adeStep())
+                .next(anotherStep()) // Add other steps as needed
+                .build();
+    }
+
+    @Bean
+    public Step adeStep() throws Exception {
+        return batchJobConfig.getStep(
+                "adeStep",
+                10, // chunk size
+                jobRepository,
+                transactionManager,
+                "CustomerBatchJob",
+                batchJobConfig.pagingItemReader("SELECT * FROM source_table", "FROM source_table", "", null, 10, null, null),
+                item -> item, // simple pass-through processor
+                batchJobConfig.asyncWriter(batchJobConfig.jdbBatchItemWriter("INSERT INTO target_table VALUES (:value)", null))
+        );
+    }
+
+    @Bean
+    public Step anotherStep() {
+        return new StepBuilder("anotherStep", jobRepository)
+                .tasklet((contribution, chunkContext) -> {
+                    // Add logic for another step here
+                    return RepeatStatus.FINISHED;
+                }, transactionManager)
+                .build();
+    }
+}
