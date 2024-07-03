@@ -1,3 +1,6 @@
+
+
+
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -149,5 +152,52 @@ public class CustomerBatchJobConfig {
                     return RepeatStatus.FINISHED;
                 }, transactionManager)
                 .build();
+    }
+}
+
+
+
+111111------ listmer switch 
+
+
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
+
+import javax.sql.DataSource;
+
+@Component
+public class DeleteDataJobExecutionListener implements JobExecutionListener {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    public DeleteDataJobExecutionListener(@Qualifier("testdatasource") DataSource dataSource) {
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
+    }
+
+    @Override
+    public void beforeJob(JobExecution jobExecution) {
+        String jobName = jobExecution.getJobInstance().getJobName();
+
+        switch (jobName) {
+            case "customerJob":
+                jdbcTemplate.execute("DELETE FROM customer_table WHERE your_condition");
+                break;
+            case "anotherJob":
+                jdbcTemplate.execute("DELETE FROM another_table WHERE your_condition");
+                break;
+            // Add more cases as needed for different job names
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void afterJob(JobExecution jobExecution) {
+        // Optional: Add any post-job logic here
     }
 }
