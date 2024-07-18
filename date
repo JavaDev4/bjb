@@ -1,0 +1,45 @@
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.ZoneOffset;
+
+public class DateUtil {
+    public static String getFixedConversionDatePlusOne(String originalEffDate) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        try {
+            LocalDateTime dateTime = LocalDateTime.parse(originalEffDate, formatter);
+            dateTime = dateTime.plusDays(1);
+            return dateTime.format(formatter);
+        } catch (DateTimeParseException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+}
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+import org.junit.jupiter.api.Test;
+
+public class DateUtilTest {
+
+    @Test
+    public void testGetFixedConversionDatePlusOne_ValidDate() {
+        String originalDate = "2023-07-17T14:30:00Z";
+        String expectedDate = "2023-07-18T14:30:00Z";
+        
+        String result = DateUtil.getFixedConversionDatePlusOne(originalDate);
+        
+        assertEquals(expectedDate, result);
+    }
+
+    @Test
+    public void testGetFixedConversionDatePlusOne_InvalidDate() {
+        String originalDate = "invalid-date-format";
+        
+        String result = DateUtil.getFixedConversionDatePlusOne(originalDate);
+        
+        assertNull(result);
+    }
+}
