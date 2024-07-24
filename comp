@@ -1,0 +1,48 @@
+private String compareResults(LoanAddress dbResponse, List<LinkedHashMap<String, String>> apiResponse) {
+    for (LinkedHashMap<String, String> apiAddress : apiResponse) {
+        if (compareAddresses(apiAddress, dbResponse)) {
+            // Return the addressIdentifier from the API response if a match is found
+            return apiAddress.get("AddressIdentifier"); // Adjust field name as needed
+        }
+    }
+
+    // Return null or a default value if no match is found
+    return null; // Or "DefaultIdentifier" based on your logic
+}
+
+private boolean compareAddresses(LinkedHashMap<String, String> existingAddress, LoanAddress addressDto) {
+    // Extract and compare address fields from API response and DB response
+    String apiCountryCode = extractCountryCode(existingAddress.get("Country"));
+    String apiStateCode = extractStateCode(existingAddress.get("State"));
+    String apiPostalCode = existingAddress.get("PostalCode");
+    String apiPostalCodeTrimmed = (apiPostalCode != null && apiPostalCode.length() > 5) ? apiPostalCode.substring(0, 5) : apiPostalCode;
+
+    String dtoPostalCode = addressDto.getZipCode();
+    String dtoPostalCodeTrimmed = (dtoPostalCode != null && dtoPostalCode.length() > 5) ? dtoPostalCode.substring(0, 5) : dtoPostalCode;
+
+    boolean stateCodeMatches = (apiStateCode == null && addressDto.getState() == null) ||
+                               (apiStateCode != null && apiStateCode.equals(addressDto.getState()));
+    boolean countryCodeMatches = (apiCountryCode == null && addressDto.getCountry() == null) ||
+                                 (apiCountryCode != null && apiCountryCode.equals(addressDto.getCountry()));
+
+    return safeTrim(existingAddress.get("Street1")).equals(safeTrim(addressDto.getAddress1())) &&
+           safeTrim(existingAddress.get("Street2")).equals(safeTrim(addressDto.getAddress2())) &&
+           safeTrim(existingAddress.get("Street3")).equals(safeTrim(addressDto.getAddress3())) &&
+           safeTrim(existingAddress.get("Street4")).equals(safeTrim(addressDto.getAddress4())) &&
+           safeTrim(existingAddress.get("City")).equals(safeTrim(addressDto.getCity())) &&
+           safeTrim(apiPostalCodeTrimmed).equals(safeTrim(dtoPostalCodeTrimmed)) &&
+           stateCodeMatches &&
+           countryCodeMatches;
+}
+
+private String safeTrim(String value) {
+    return value == null ? "" : value.trim();
+}
+
+private String extractCountryCode(String country) {
+    return country != null ? country.split("\\(")[0].trim() : null;
+}
+
+private String extractStateCode(String state) {
+    return state != null ? state.split("\\(")[0].trim() : null;
+}
